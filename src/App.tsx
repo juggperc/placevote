@@ -14,7 +14,8 @@ import SignUpPage from '@/pages/SignUpPage';
 import AdminPage from '@/pages/AdminPage';
 import { Toaster } from '@/components/ui/sonner';
 
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+// Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for Vercel compatibility
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || (import.meta as any).env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!CLERK_PUBLISHABLE_KEY) {
