@@ -53,7 +53,7 @@ export async function fetchUploads(orgId: string): Promise<Upload[]> {
 /** Delete an upload by ID */
 export async function deleteUpload(id: string): Promise<void> {
   const authHeaders = await getAuthHeaders();
-  const res = await fetch(buildApiUrl(`/uploads/${id}`), {
+  const res = await fetch(`${buildApiUrl('/upload-delete')}?id=${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: authHeaders,
   });
