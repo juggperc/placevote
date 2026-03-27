@@ -43,6 +43,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('Admin API error:', error);
+    if (error?.status && error?.code) {
+      return res.status(error.status).json({ code: error.code, error: error.message });
+    }
     if (error.status) return res.status(error.status).json({ error: error.error });
     return res.status(500).json({ error: 'Internal server error' });
   }

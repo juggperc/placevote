@@ -210,10 +210,18 @@ ${
 
     // Native Web Response object
     return result.toDataStreamResponse();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Chat API Error:', error);
+    // Handle AuthError from middleware
+    if (error?.status && error?.code) {
+      return new Response(
+        JSON.stringify({ code: error.code, error: error.message }),
+        { status: error.status, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(JSON.stringify({ error: 'Failed to process chat message' }), {
       status: 500,
+      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

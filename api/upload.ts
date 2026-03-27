@@ -96,8 +96,11 @@ export default async function handler(
     }
 
     return res.status(201).json(upload);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Upload error:', err);
+    if (err?.status && err?.code) {
+      return res.status(err.status).json({ code: err.code, error: err.message });
+    }
     return res.status(500).json({ error: 'Upload failed' });
   }
 }
