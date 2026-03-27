@@ -11,4 +11,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  define: {
+    // Map NEXT_PUBLIC_ env vars (Vercel convention) to VITE_ (Vite convention)
+    // This allows Vercel env vars like NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to work
+    'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
+      process.env.VITE_CLERK_PUBLISHABLE_KEY || 
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 
+      ''
+    ),
+  },
 })

@@ -4,8 +4,7 @@ import { useUser, useOrganization, UserButton, SignInButton } from '@clerk/clerk
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 
-// Support both VITE_ (Vite) and NEXT_PUBLIC_ (Next.js) prefixes for Vercel compatibility
-const CLERK_CONFIGURED = !!(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || (import.meta as any).env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+const CLERK_CONFIGURED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', icon: MessageSquare },
