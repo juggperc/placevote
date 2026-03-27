@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "api/**/*": {
+      "region": "syd1"
+    },
+    "api/chat.ts": {
+      "maxDuration": 30
+    },
+    "api/report.ts": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "ontology_nodes" ADD CONSTRAINT "ontology_nodes_org_type_label_unq" UNIQUE("org_id","type","label");
