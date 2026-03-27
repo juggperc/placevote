@@ -14,6 +14,7 @@ export const orgs = pgTable('orgs', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
   aiModel: varchar('ai_model', { length: 128 }),
+  openrouterApiKey: varchar('openrouter_api_key', { length: 256 }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),

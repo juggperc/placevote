@@ -6,6 +6,12 @@
     },
     "api/report.ts": {
       "maxDuration": 30
+    },
+    "api/upload.ts": {
+      "maxDuration": 60
+    },
+    "api/inngest.ts": {
+      "maxDuration": 300
     }
   },
   "rewrites": [

@@ -4,6 +4,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../_db.js';
 import { uploads } from '../../src/lib/schema.js';
 
+export const config = {
+  runtime: 'nodejs',
+};
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse,

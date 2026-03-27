@@ -4,9 +4,11 @@ import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { inngest } from './_inngest.js';
 import { db } from './_db.js';
-import { uploads } from '../src/lib/schema.js';
+import { uploads, orgs } from '../src/lib/schema.js';
 
 const MAX_SAMPLE_CHARS = 8_000; // ≈ 2 000 tokens
+
+const DEFAULT_MODEL = 'x-ai/grok-4.1-fast';
 
 // ─── Classification Zod schema ──────────────────────────────────
 const classificationSchema = z.object({
@@ -150,6 +152,19 @@ export const processUpload = inngest.createFunction(
       blobUrl: string;
     };
 
+    // ── Step 0: Fetch org settings for model/API key ───────────
+    const orgSettings = await step.run('fetch-org-settings', async () => {
+      const [org] = await db
+        .select({ aiModel: orgs.aiModel, openrouterApiKey: orgs.openrouterApiKey })
+        .from(orgs)
+        .where(eq(orgs.id, orgId))
+        .limit(1);
+      return org ?? { aiModel: null, openrouterApiKey: null };
+    });
+
+    const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY!;
+    const modelName = orgSettings.aiModel || DEFAULT_MODEL;
+
     // ── Step 1: Mark as processing ──────────────────────────
     await step.run('set-processing', async () => {
       await db
@@ -195,11 +210,11 @@ export const processUpload = inngest.createFunction(
     // ── Step 4: Classify with OpenRouter → Gemini 2.0 Flash ─
     const classification = await step.run('classify-ai', async () => {
       const openrouter = createOpenRouter({
-        apiKey: process.env.OPENROUTER_API_KEY!,
+        apiKey,
       });
 
       const { object } = await generateObject<z.infer<typeof classificationSchema>>({
-        model: openrouter.chat('x-ai/grok-4.1-fast') as any,
+        model: openrouter.chat(modelName) as any,
         schema: classificationSchema,
         prompt: [
           'You are a civic data analyst working for an Australian local government.',

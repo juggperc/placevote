@@ -23,6 +23,7 @@ function detectFileType(filename: string): string | null {
 }
 
 export const config = {
+  runtime: 'nodejs',
   api: { bodyParser: false },
 };
 

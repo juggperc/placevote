@@ -4,7 +4,9 @@ import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { inngest } from './_inngest.js';
 import { db } from './_db.js';
-import { uploads, ontologyNodes, ontologyEdges } from '../src/lib/schema.js';
+import { uploads, ontologyNodes, ontologyEdges, orgs } from '../src/lib/schema.js';
+
+const DEFAULT_MODEL = 'x-ai/grok-4.1-fast';
 
 // ─── Ontology Generation Zod schema ─────────────────────────────
 const ontologySchema = z.object({
@@ -60,14 +62,27 @@ export const buildOntology = inngest.createFunction(
     };
 
     try {
-      // ── Step 1: Call OpenRouter → Gemini 2.0 Flash ──────────
+      // ── Step 0: Fetch org settings for model/API key ───────────
+      const orgSettings = await step.run('fetch-org-settings', async () => {
+        const [org] = await db
+          .select({ aiModel: orgs.aiModel, openrouterApiKey: orgs.openrouterApiKey })
+          .from(orgs)
+          .where(eq(orgs.id, orgId))
+          .limit(1);
+        return org ?? { aiModel: null, openrouterApiKey: null };
+      });
+
+      const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY!;
+      const modelName = orgSettings.aiModel || DEFAULT_MODEL;
+
+      // ── Step 1: Call OpenRouter → Extract Ontology ──────────
       const ontology = await step.run('extract-ontology', async () => {
         const openrouter = createOpenRouter({
-          apiKey: process.env.OPENROUTER_API_KEY!,
+          apiKey,
         });
 
         const { object } = await generateObject<z.infer<typeof ontologySchema>>({
-          model: openrouter.chat('x-ai/grok-4.1-fast') as any,
+          model: openrouter.chat(modelName) as any,
           schema: ontologySchema,
           prompt: [
             'You are a civic data knowledge extraction AI.',

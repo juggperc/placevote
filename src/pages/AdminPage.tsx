@@ -1,18 +1,26 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '@/store/app-store';
-import { ShieldAlert, Database, FileUp, Activity, FileKey } from 'lucide-react';
+import { ShieldAlert, Database, FileUp, Activity, FileKey, Settings, Save, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { useState, useEffect } from 'react';
 
 export default function AdminPage() {
   const org = useAppStore((s) => s.organization);
   const user = useAppStore((s) => s.user);
+  const queryClient = useQueryClient();
+
+  const [aiModel, setAiModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [hasExistingKey, setHasExistingKey] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin-stats', org?.id],
     queryFn: async () => {
       const res = await fetch(`/api/admin/stats?orgId=${org?.id}`, {
         headers: {
-          'Authorization': `Bearer ${user?.id}` // Ideally Clerk token here, simulating token pass
+          'Authorization': `Bearer ${user?.id}`
         }
       });
       if (!res.ok) {
@@ -24,6 +32,61 @@ export default function AdminPage() {
     enabled: !!org?.id && user?.role === 'admin',
     retry: false
   });
+
+  const { data: settings, isLoading: settingsLoading } = useQuery({
+    queryKey: ['org-settings', org?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/orgs/${org?.id}/settings`, {
+        headers: {
+          'Authorization': `Bearer ${user?.id}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch settings');
+      return res.json();
+    },
+    enabled: !!org?.id && user?.role === 'admin',
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setAiModel(settings.aiModel || '');
+      setHasExistingKey(settings.hasApiKey || false);
+    }
+  }, [settings]);
+
+  const saveSettings = useMutation({
+    mutationFn: async (data: { aiModel?: string; openrouterApiKey?: string }) => {
+      const res = await fetch(`/api/orgs/${org?.id}/settings`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user?.id}`
+        },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to save settings');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['org-settings', org?.id] });
+    }
+  });
+
+  const handleSaveSettings = () => {
+    const data: { aiModel?: string; openrouterApiKey?: string } = {};
+    if (aiModel !== (settings?.aiModel || '')) {
+      data.aiModel = aiModel || '';
+    }
+    if (apiKey) {
+      data.openrouterApiKey = apiKey;
+    }
+    if (Object.keys(data).length > 0) {
+      saveSettings.mutate(data);
+    }
+  };
 
   if (user?.role !== 'admin') {
     return (
@@ -64,7 +127,7 @@ export default function AdminPage() {
           {(error as any).message}
         </div>
       ) : data ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
           
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -112,6 +175,74 @@ export default function AdminPage() {
 
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <Settings className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-lg">AI Configuration</CardTitle>
+            <p className="text-sm text-muted-foreground">Configure organization-wide AI model and API keys</p>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {settingsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">AI Model</label>
+                <Input
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  placeholder="x-ai/grok-4.1-fast"
+                />
+                <p className="text-xs text-muted-foreground">
+                  OpenRouter model identifier. Defaults to x-ai/grok-4.1-fast if not set.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">OpenRouter API Key</label>
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={hasExistingKey ? '••••••••••••' : 'sk-or-...'}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {hasExistingKey 
+                    ? 'An API key is already configured. Enter a new key to update it.'
+                    : 'Your OpenRouter API key. Falls back to system default if not set.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button 
+                  onClick={handleSaveSettings}
+                  disabled={saveSettings.isPending}
+                >
+                  {saveSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Settings
+                </Button>
+
+                {saveSettings.isSuccess && (
+                  <span className="text-sm text-green-600">Settings saved successfully</span>
+                )}
+                {saveSettings.isError && (
+                  <span className="text-sm text-destructive">
+                    {(saveSettings.error as Error)?.message || 'Failed to save settings'}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
