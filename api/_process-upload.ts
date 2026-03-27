@@ -5,8 +5,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { inngest } from './_inngest.js';
 import { db } from './_db.js';
 import { uploads, orgs } from '../src/lib/schema.js';
-
-const MAX_SAMPLE_CHARS = 8_000; // ≈ 2 000 tokens
+import { parseUploadBuffer } from './_upload-preview.js';
 
 const DEFAULT_MODEL = 'x-ai/grok-4.1-fast';
 
@@ -35,98 +34,6 @@ const classificationSchema = z.object({
     .describe('Brief human-readable summary of the data content'),
 });
 
-// ─── Helpers ────────────────────────────────────────────────────
-function getExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? '';
-}
-
-function truncate(text: string): string {
-  return text.length > MAX_SAMPLE_CHARS
-    ? text.slice(0, MAX_SAMPLE_CHARS) + '\n… [truncated]'
-    : text;
-}
-
-// ─── Parsers ────────────────────────────────────────────────────
-async function parseCSV(
-  buffer: Buffer,
-): Promise<{ rowCount: number; sample: string }> {
-  const Papa = (await import('papaparse')).default;
-  const text = buffer.toString('utf-8');
-  const result = Papa.parse(text, { header: true, preview: 50 });
-  const rows = result.data as Record<string, unknown>[];
-  const totalRows = text.split('\n').filter((l) => l.trim()).length - 1;
-  return {
-    rowCount: totalRows,
-    sample: truncate(JSON.stringify(rows.slice(0, 20), null, 2)),
-  };
-}
-
-async function parseXLSX(
-  buffer: Buffer,
-): Promise<{ rowCount: number; sample: string }> {
-  const XLSX = await import('xlsx');
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const firstSheet = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[firstSheet];
-  const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
-  return {
-    rowCount: rows.length,
-    sample: truncate(JSON.stringify(rows.slice(0, 20), null, 2)),
-  };
-}
-
-async function parsePDF(
-  buffer: Buffer,
-): Promise<{ rowCount: number; sample: string }> {
-  const { PDFParse } = await import('pdf-parse');
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  const textResult = await parser.getText();
-  await parser.destroy();
-  const fullText = textResult.text;
-  const lines = fullText.split('\n').filter((l) => l.trim());
-  return {
-    rowCount: lines.length,
-    sample: truncate(fullText),
-  };
-}
-
-function parseJSON(
-  buffer: Buffer,
-): { rowCount: number; sample: string } {
-  const text = buffer.toString('utf-8');
-  const data = JSON.parse(text) as unknown;
-
-  // GeoJSON FeatureCollection
-  if (
-    data &&
-    typeof data === 'object' &&
-    'type' in data &&
-    (data as Record<string, unknown>).type === 'FeatureCollection' &&
-    'features' in data &&
-    Array.isArray((data as Record<string, unknown>).features)
-  ) {
-    const features = (data as { features: unknown[] }).features;
-    return {
-      rowCount: features.length,
-      sample: truncate(JSON.stringify(features.slice(0, 10), null, 2)),
-    };
-  }
-
-  // Plain array
-  if (Array.isArray(data)) {
-    return {
-      rowCount: data.length,
-      sample: truncate(JSON.stringify(data.slice(0, 20), null, 2)),
-    };
-  }
-
-  // Single object
-  return {
-    rowCount: 1,
-    sample: truncate(JSON.stringify(data, null, 2)),
-  };
-}
-
 // ─── Inngest function ───────────────────────────────────────────
 export const processUpload = inngest.createFunction(
   {
@@ -145,11 +52,13 @@ export const processUpload = inngest.createFunction(
     },
   },
   async ({ event, step }) => {
-    const { uploadId, orgId, filename, blobUrl } = event.data as {
+    const { uploadId, orgId, filename, blobUrl, rowCount: initialRowCount, sample: initialSample } = event.data as {
       uploadId: string;
       orgId: string;
       filename: string;
       blobUrl: string;
+      rowCount?: number;
+      sample?: string;
     };
 
     // ── Step 0: Fetch org settings for model/API key ───────────
@@ -173,38 +82,23 @@ export const processUpload = inngest.createFunction(
         .where(eq(uploads.id, uploadId));
     });
 
-    // ── Step 2: Fetch file from Vercel Blob ─────────────────
-    const fileBase64 = await step.run('fetch-blob', async () => {
+    // ── Step 2: Prepare parsed preview ───────────────────────
+    const parsed = await step.run('prepare-preview', async () => {
+      if (typeof initialSample === 'string' && typeof initialRowCount === 'number') {
+        return {
+          rowCount: initialRowCount,
+          sample: initialSample,
+        };
+      }
+
+      if (!blobUrl || blobUrl.startsWith('inline://')) {
+        throw new Error('Upload payload is unavailable for parsing.');
+      }
+
       const res = await fetch(blobUrl);
       if (!res.ok) throw new Error(`Blob fetch failed: ${res.status}`);
       const ab = await res.arrayBuffer();
-      return Buffer.from(ab).toString('base64');
-    });
-
-    // ── Step 3: Parse file based on extension ───────────────
-    const parsed = await step.run('parse-file', async () => {
-      const buffer = Buffer.from(fileBase64, 'base64');
-      const ext = getExtension(filename);
-
-      switch (ext) {
-        case 'csv':
-          return parseCSV(buffer);
-        case 'xlsx':
-          return parseXLSX(buffer);
-        case 'pdf':
-          return parsePDF(buffer);
-        case 'json':
-        case 'geojson':
-          return parseJSON(buffer);
-        case 'zip':
-          return {
-            rowCount: 0,
-            sample:
-              '[Shapefile ZIP archive. Requires GDAL for full extraction.]',
-          };
-        default:
-          return { rowCount: 0, sample: `[Unknown file type: .${ext}]` };
-      }
+      return parseUploadBuffer(Buffer.from(ab), filename);
     });
 
     // ── Step 4: Classify with OpenRouter → Gemini 2.0 Flash ─

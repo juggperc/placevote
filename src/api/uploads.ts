@@ -1,6 +1,19 @@
 import type { Upload } from '@/types';
 import { buildApiUrl, getAuthHeaders } from '@/lib/api';
 
+function getErrorMessage(rawBody: string, status: number): string {
+  if (!rawBody) {
+    return `Upload failed: ${status}`;
+  }
+
+  try {
+    const body = JSON.parse(rawBody) as { error?: string };
+    return body.error ?? `Upload failed: ${status}`;
+  } catch {
+    return rawBody;
+  }
+}
+
 /** Upload a file to Vercel Blob via the serverless function */
 export async function uploadFile(
   file: File,
@@ -17,8 +30,8 @@ export async function uploadFile(
   );
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `Upload failed: ${res.status}`);
+    const rawBody = await res.text().catch(() => '');
+    throw new Error(getErrorMessage(rawBody, res.status));
   }
 
   return res.json();

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useUploadFile } from '@/hooks/use-uploads';
 import { useAppStore } from '@/store/app-store';
 import { isUuid } from '@/lib/api';
+import { toast } from 'sonner';
 
 const ACCEPT = {
   'text/csv': ['.csv'],
@@ -24,23 +25,43 @@ const FILE_TYPE_LABELS: Record<string, { label: string; icon: typeof FileText }>
   zip: { label: 'Shapefile', icon: Archive },
 };
 
+type UploadQueueItem = {
+  id: string;
+  name: string;
+  status: 'uploading' | 'error';
+  message?: string;
+};
 
 export default function UploadDropzone() {
   const org = useAppStore((s) => s.organization);
   const { mutateAsync, isPending } = useUploadFile(org?.id);
-  const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const canUpload = isUuid(org?.id);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       for (const file of acceptedFiles) {
-        setUploadQueue((q) => [...q, file.name]);
+        const queueId = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setUploadQueue((q) => [...q, { id: queueId, name: file.name, status: 'uploading' }]);
+
         try {
           await mutateAsync(file);
+          setUploadQueue((q) => q.filter((item) => item.id !== queueId));
         } catch (err) {
+          const message =
+            err instanceof Error ? err.message : `Failed to upload ${file.name}.`;
           console.error(`Failed to upload ${file.name}:`, err);
-        } finally {
-          setUploadQueue((q) => q.filter((n) => n !== file.name));
+          toast.error(message);
+          setUploadQueue((q) =>
+            q.map((item) =>
+              item.id === queueId
+                ? { ...item, status: 'error', message }
+                : item,
+            ),
+          );
+          window.setTimeout(() => {
+            setUploadQueue((q) => q.filter((item) => item.id !== queueId));
+          }, 6000);
         }
       }
     },
@@ -128,14 +149,25 @@ export default function UploadDropzone() {
       {/* Active upload queue */}
       {uploadQueue.length > 0 && (
         <div className="space-y-1">
-          {uploadQueue.map((name) => (
+          {uploadQueue.map((item) => (
             <div
-              key={name}
-              className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs"
+              key={item.id}
+              className={cn(
+                'flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
+                item.status === 'error'
+                  ? 'border border-destructive/25 bg-destructive/5 text-destructive'
+                  : 'bg-muted/50',
+              )}
             >
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-              <span className="truncate">{name}</span>
-              <span className="ml-auto text-muted-foreground">Uploading…</span>
+              {item.status === 'error' ? (
+                <Upload className="h-3.5 w-3.5" />
+              ) : (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+              )}
+              <span className="truncate">{item.name}</span>
+              <span className={cn('ml-auto', item.status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+                {item.status === 'error' ? 'Upload failed' : 'Uploading…'}
+              </span>
             </div>
           ))}
         </div>

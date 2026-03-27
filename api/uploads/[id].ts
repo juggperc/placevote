@@ -39,7 +39,9 @@ export default async function handler(
 
     // ── 2. Delete from Vercel Blob ─────────────────────────────
     try {
-      await del(upload.blobUrl);
+      if (!upload.blobUrl.startsWith('inline://')) {
+        await del(upload.blobUrl);
+      }
     } catch {
       console.warn('Blob deletion failed (may already be gone):', upload.blobUrl);
     }

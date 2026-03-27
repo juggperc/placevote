@@ -7,20 +7,7 @@ import { inngest } from './_inngest.js';
 import { z } from 'zod';
 import { assertOrgAccess } from './_middleware.js';
 import { uploadRatelimit } from './_ratelimit.js';
-
-/** Map file extension → detected_type label */
-function detectFileType(filename: string): string | null {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    csv: 'csv',
-    xlsx: 'xlsx',
-    pdf: 'pdf',
-    json: 'json',
-    geojson: 'geojson',
-    zip: 'shapefile',
-  };
-  return ext ? map[ext] ?? null : null;
-}
+import { detectFileType, parseUploadBuffer } from './_upload-preview.js';
 
 export const config = {
   runtime: 'nodejs',
@@ -31,6 +18,25 @@ const uploadSchema = z.object({
   filename: z.string().min(1),
   orgId: z.string().uuid(),
 });
+
+function getContentType(req: VercelRequest): string | undefined {
+  const header = req.headers['content-type'];
+  return Array.isArray(header) ? header[0] : header;
+}
+
+async function readRequestBody(req: VercelRequest): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
+}
+
+function buildInlineBlobUrl(orgId: string, filename: string): string {
+  return `inline://uploads/${orgId}/${encodeURIComponent(filename)}`;
+}
 
 export default async function handler(
   req: VercelRequest,
@@ -60,10 +66,36 @@ export default async function handler(
       }
     }
 
-    // ── 1. Stream file to Vercel Blob ──────────────────────────
-    const blob = await put(`uploads/${orgId}/${filename}`, req, {
-      access: 'public',
-    });
+    const fileBuffer = await readRequestBody(req);
+    if (fileBuffer.length === 0) {
+      return res.status(400).json({ code: 'EMPTY_UPLOAD', error: 'Uploaded file was empty' });
+    }
+
+    let preview = {
+      rowCount: 0,
+      sample: `[Unable to parse ${filename}]`,
+    };
+
+    try {
+      preview = await parseUploadBuffer(fileBuffer, filename);
+    } catch (error) {
+      console.warn('Upload preview parsing failed, continuing with fallback preview:', error);
+    }
+
+    let blobUrl = buildInlineBlobUrl(orgId, filename);
+
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const blob = await put(`uploads/${orgId}/${filename}`, fileBuffer, {
+          access: 'public',
+          addRandomSuffix: true,
+          contentType: getContentType(req),
+        });
+        blobUrl = blob.url;
+      } catch (error) {
+        console.warn('Blob upload failed, continuing with inline preview fallback:', error);
+      }
+    }
 
     // ── 2. Insert row into uploads table ───────────────────────
     const detectedType = detectFileType(filename);
@@ -73,7 +105,7 @@ export default async function handler(
       .values({
         orgId,
         filename,
-        blobUrl: blob.url,
+        blobUrl,
         status: 'queued',
         detectedType,
       })
@@ -87,8 +119,10 @@ export default async function handler(
           uploadId: upload.id,
           orgId,
           filename,
-          blobUrl: blob.url,
+          blobUrl,
           detectedType,
+          rowCount: preview.rowCount,
+          sample: preview.sample,
         },
       });
     } catch {
