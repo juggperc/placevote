@@ -1,8 +1,6 @@
 {
+  "regions": ["syd1"],
   "functions": {
-    "api/**/*": {
-      "region": "syd1"
-    },
     "api/chat.ts": {
       "maxDuration": 30
     },
