@@ -8,7 +8,7 @@ export const computeFriction = inngest.createFunction(
     id: 'compute-friction',
     retries: 2,
     onFailure: async ({ event, error }) => {
-      const { failedJobs } = await import('../src/lib/schema');
+      const { failedJobs } = await import('../src/lib/schema.js');
       await db.insert(failedJobs).values({
         eventId: event.data.event.id || 'unknown',
         functionId: 'compute-friction',
@@ -119,7 +119,7 @@ export const computeFriction = inngest.createFunction(
       }
 
       // Normalise 0-100 & extract top issues
-      const finalScores = rawScores.map((raw) => {
+      const finalScores: Array<typeof frictionScores.$inferInsert> = rawScores.map((raw) => {
         const normalisedScore = maxRawScore > 0 ? (raw.score / maxRawScore) * 100 : 0;
         
         // Count issue frequencies
@@ -153,7 +153,7 @@ export const computeFriction = inngest.createFunction(
       await db.delete(frictionScores).where(eq(frictionScores.orgId, orgId));
       
       if (scores.length > 0) {
-        await db.insert(frictionScores).values(scores);
+        await db.insert(frictionScores).values(scores as Array<typeof frictionScores.$inferInsert>);
       }
     });
 

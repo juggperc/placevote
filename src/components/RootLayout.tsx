@@ -1,8 +1,16 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { MessageSquare, Network, Map, Vote, FileKey } from 'lucide-react';
-import { useUser, useOrganization, UserButton, SignInButton } from '@clerk/clerk-react';
+import {
+  useAuth,
+  useUser,
+  useOrganization,
+  UserButton,
+  SignInButton,
+} from '@clerk/clerk-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
+import { buildApiUrl } from '@/lib/api';
 
 const CLERK_CONFIGURED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -15,7 +23,7 @@ const NAV_ITEMS = [
 function ClerkUserSection() {
   const { isSignedIn, isLoaded } = useUser();
   const { organization } = useOrganization();
-  const stubOrg = useAppStore((s) => s.organization);
+  const appOrg = useAppStore((s) => s.organization);
 
   if (!isLoaded) {
     return <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />;
@@ -31,7 +39,7 @@ function ClerkUserSection() {
     );
   }
 
-  const orgName = organization?.name ?? stubOrg?.name;
+  const orgName = organization?.name ?? appOrg?.name;
 
   return (
     <div className="flex items-center gap-3">
@@ -109,7 +117,15 @@ function AdminNavLink() {
   );
 }
 
-export default function RootLayout() {
+function AppShell({
+  showAdminNav,
+  userSection,
+  children,
+}: {
+  showAdminNav: boolean;
+  userSection: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* ─── Top Navigation Bar ─── */}
@@ -154,8 +170,8 @@ export default function RootLayout() {
                 )}
               </NavLink>
             ))}
-            {CLERK_CONFIGURED && <AdminNavLink />}
-            {!CLERK_CONFIGURED && useAppStore.getState().user?.role === 'admin' && (
+            {CLERK_CONFIGURED && showAdminNav && <AdminNavLink />}
+            {!CLERK_CONFIGURED && showAdminNav && (
               <NavLink
                 to="/admin"
                 className={({ isActive }) =>
@@ -184,14 +200,191 @@ export default function RootLayout() {
           <div className="flex-1" />
 
           {/* User section */}
-          {CLERK_CONFIGURED ? <ClerkUserSection /> : <StubUserSection />}
+          {userSection}
         </nav>
       </header>
 
       {/* ─── Page content ─── */}
       <main className="flex flex-1 flex-col">
-        <Outlet />
+        {children}
       </main>
     </div>
   );
+}
+
+function BootstrapState({
+  isLoading,
+  error,
+}: {
+  isLoading: boolean;
+  error: string | null;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="rounded-xl border border-border/60 bg-card px-6 py-4 text-sm text-muted-foreground shadow-sm">
+          Initialising workspace…
+        </div>
+      </div>
+    );
+  }
+
+  if (!error) return null;
+
+  return (
+    <div className="flex flex-1 items-center justify-center p-6">
+      <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+        {error}
+      </div>
+    </div>
+  );
+}
+
+function RootLayoutWithClerk() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const { organization } = useOrganization();
+  const appUser = useAppStore((s) => s.user);
+  const setUser = useAppStore((s) => s.setUser);
+  const setOrganization = useAppStore((s) => s.setOrganization);
+  const setAuthTokenGetter = useAppStore((s) => s.setAuthTokenGetter);
+  const logout = useAppStore((s) => s.logout);
+
+  const [bootstrapState, setBootstrapState] = useState<{
+    isLoading: boolean;
+    error: string | null;
+  }>({
+    isLoading: true,
+    error: null,
+  });
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+
+    return () => {
+      setAuthTokenGetter(null);
+    };
+  }, [getToken, setAuthTokenGetter]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function bootstrap() {
+      if (!isLoaded) return;
+
+      if (!isSignedIn || !user) {
+        logout();
+        if (!isCancelled) {
+          setBootstrapState({
+            isLoading: false,
+            error: 'Sign in required to access this workspace.',
+          });
+        }
+        return;
+      }
+
+      try {
+        const token = await getToken();
+        if (!token) {
+          throw new Error('Failed to acquire a Clerk session token.');
+        }
+
+        const res = await fetch(buildApiUrl('/bootstrap'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            email: user.primaryEmailAddress?.emailAddress,
+            displayName:
+              [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+              user.username ||
+              user.primaryEmailAddress?.emailAddress,
+            avatarUrl: user.imageUrl,
+            organizationName: organization?.name,
+            organizationSlug: organization?.slug,
+            role: user.publicMetadata?.role,
+          }),
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(payload.error ?? 'Failed to initialize workspace.');
+        }
+
+        if (isCancelled) return;
+
+        setUser(payload.user ?? null);
+        setOrganization(payload.organization ?? null);
+        setBootstrapState({ isLoading: false, error: null });
+      } catch (error: any) {
+        console.error('Client bootstrap error:', error);
+        if (isCancelled) return;
+
+        setBootstrapState({
+          isLoading: false,
+          error: error?.message ?? 'Failed to initialize workspace.',
+        });
+      }
+    }
+
+    setBootstrapState((state) => ({ ...state, isLoading: true, error: null }));
+    void bootstrap();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    getToken,
+    isLoaded,
+    isSignedIn,
+    logout,
+    organization?.name,
+    organization?.slug,
+    setOrganization,
+    setUser,
+    user,
+  ]);
+
+  const isAdmin =
+    user?.publicMetadata?.role === 'admin' || appUser?.role === 'admin';
+
+  return (
+    <AppShell
+      showAdminNav={!!isAdmin}
+      userSection={<ClerkUserSection />}
+    >
+      {bootstrapState.isLoading || bootstrapState.error ? (
+        <BootstrapState
+          isLoading={bootstrapState.isLoading}
+          error={bootstrapState.error}
+        />
+      ) : (
+        <Outlet />
+      )}
+    </AppShell>
+  );
+}
+
+function RootLayoutDemo() {
+  const setAuthTokenGetter = useAppStore((s) => s.setAuthTokenGetter);
+  const isAdmin = useAppStore((s) => s.user?.role === 'admin');
+
+  useEffect(() => {
+    setAuthTokenGetter(null);
+  }, [setAuthTokenGetter]);
+
+  return (
+    <AppShell
+      showAdminNav={!!isAdmin}
+      userSection={<StubUserSection />}
+    >
+      <Outlet />
+    </AppShell>
+  );
+}
+
+export default function RootLayout() {
+  return CLERK_CONFIGURED ? <RootLayoutWithClerk /> : <RootLayoutDemo />;
 }

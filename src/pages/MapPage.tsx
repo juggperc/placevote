@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { buildApiUrl, isUuid } from '@/lib/api';
 
 interface SuburbData {
   suburbName: string;
@@ -29,15 +30,11 @@ export default function MapPage() {
   const { data: frictionRes, isLoading: isLoadingScores } = useQuery({
     queryKey: ['friction', org?.id],
     queryFn: async () => {
-      const res = await fetch(
-        import.meta.env.VITE_API_BASE_URL
-          ? `${import.meta.env.VITE_API_BASE_URL}/friction?orgId=${org?.id}`
-          : `/api/friction?orgId=${org?.id}`
-      );
+      const res = await fetch(`${buildApiUrl('/friction')}?orgId=${org?.id}`);
       if (!res.ok) throw new Error('Failed to fetch friction scores');
       return res.json();
     },
-    enabled: !!org?.id,
+    enabled: isUuid(org?.id),
   });
 
   const scoresMap = useMemo(() => {

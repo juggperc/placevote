@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq, desc } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from './_db.js';
 import { frictionScores } from '../src/lib/schema.js';
 
@@ -15,10 +16,11 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const orgId = req.query.orgId as string;
-  if (!orgId) {
-    return res.status(400).json({ error: 'Missing orgId query parameter' });
+  const parseResult = z.string().uuid().safeParse(req.query.orgId);
+  if (!parseResult.success) {
+    return res.status(400).json({ error: 'Invalid orgId query parameter' });
   }
+  const orgId = parseResult.data;
 
   try {
     const scores = await db

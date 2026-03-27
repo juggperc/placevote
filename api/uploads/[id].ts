@@ -1,8 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { del } from '@vercel/blob';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../_db.js';
 import { uploads } from '../../src/lib/schema.js';
+import { assertOrgAccess } from '../_middleware.js';
 
 export const config = {
   runtime: 'nodejs',
@@ -17,11 +19,11 @@ export default async function handler(
   }
 
   try {
-    const id = req.query.id as string;
-
-    if (!id) {
-      return res.status(400).json({ error: 'Missing upload id' });
+    const parseResult = z.string().uuid().safeParse(req.query.id);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid upload id' });
     }
+    const id = parseResult.data;
 
     // ── 1. Find the upload row ─────────────────────────────────
     const [upload] = await db
@@ -32,6 +34,8 @@ export default async function handler(
     if (!upload) {
       return res.status(404).json({ error: 'Upload not found' });
     }
+
+    await assertOrgAccess(req, upload.orgId);
 
     // ── 2. Delete from Vercel Blob ─────────────────────────────
     try {
@@ -46,6 +50,9 @@ export default async function handler(
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('Delete upload error:', err);
+    if ((err as any)?.status && (err as any)?.code) {
+      return res.status((err as any).status).json({ code: (err as any).code, error: (err as any).message });
+    }
     return res.status(500).json({ error: 'Failed to delete upload' });
   }
 }

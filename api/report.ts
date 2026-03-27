@@ -3,6 +3,8 @@ import { streamText } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { db } from './_db.js';
 import { orgs, frictionScores } from '../src/lib/schema.js';
+import { z } from 'zod';
+import { assertOrgAccess } from './_middleware.js';
 
 // Required for Vercel AI SDK Web/Edge streaming
 export const config = {
@@ -25,21 +27,30 @@ export default async function handler(req: Request) {
     // or just pass custom body keys. useCompletion allows `body: { orgId,... }`
     const { orgId, suburbName, dateRange, prompt } = body;
 
-    if (!orgId) {
-      return new Response(JSON.stringify({ error: 'Missing orgId' }), { status: 400 });
+    const parseResult = z.object({
+      orgId: z.string().uuid(),
+      suburbName: z.string().optional(),
+      dateRange: z.string().optional(),
+      prompt: z.string().optional(),
+    }).safeParse({ orgId, suburbName, dateRange, prompt });
+
+    if (!parseResult.success) {
+      return new Response(JSON.stringify({ error: 'Invalid request payload' }), { status: 400 });
     }
+    const parsedBody = parseResult.data;
+    await assertOrgAccess(req, parsedBody.orgId);
 
     // ── Fetch Org Settings ──
     let modelName = 'x-ai/grok-4.1-fast';
-    const [org] = await db.select().from(orgs).where(eq(orgs.id, orgId)).limit(1);
+    const [org] = await db.select().from(orgs).where(eq(orgs.id, parsedBody.orgId)).limit(1);
     if (org && (org as any).aiModel) {
       modelName = (org as any).aiModel;
     }
 
     // ── Fetch Friction Scores ──
-    let scoreConditions: any[] = [eq(frictionScores.orgId, orgId)];
-    if (suburbName && suburbName !== 'All') {
-      scoreConditions.push(eq(frictionScores.suburbName, suburbName));
+    let scoreConditions: any[] = [eq(frictionScores.orgId, parsedBody.orgId)];
+    if (parsedBody.suburbName && parsedBody.suburbName !== 'All') {
+      scoreConditions.push(eq(frictionScores.suburbName, parsedBody.suburbName));
     }
     
     // We use "any" to bypass exact tuple restrictions on "and" args for simplicity
@@ -56,7 +67,7 @@ export default async function handler(req: Request) {
     // ── Build Context ──
     const contextStr = `
 === CIVIC FRICTION INTELLIGENCE ===
-Filters applied: Suburb=${suburbName || 'All'}, DateRange=${dateRange || 'All Time'}
+Filters applied: Suburb=${parsedBody.suburbName || 'All'}, DateRange=${parsedBody.dateRange || 'All Time'}
 
 ${JSON.stringify(scores, null, 2)}
 `;
@@ -85,7 +96,7 @@ ${contextStr}
     const result = await streamText({
       model: openrouter.chat(modelName) as any,
       system: systemPrompt,
-      prompt: prompt || 'Generate the Executive Brief according to the system instructions.',
+      prompt: parsedBody.prompt || 'Generate the Executive Brief according to the system instructions.',
     });
 
     // Native Web Response object

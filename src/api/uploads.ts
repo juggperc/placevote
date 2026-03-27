@@ -1,16 +1,17 @@
 import type { Upload } from '@/types';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+import { buildApiUrl, getAuthHeaders } from '@/lib/api';
 
 /** Upload a file to Vercel Blob via the serverless function */
 export async function uploadFile(
   file: File,
   orgId: string,
 ): Promise<Upload> {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(
-    `${API_BASE}/api/upload?filename=${encodeURIComponent(file.name)}&orgId=${encodeURIComponent(orgId)}`,
+    `${buildApiUrl('/upload')}?filename=${encodeURIComponent(file.name)}&orgId=${encodeURIComponent(orgId)}`,
     {
       method: 'POST',
+      headers: authHeaders,
       body: file,
     },
   );
@@ -26,7 +27,7 @@ export async function uploadFile(
 /** Fetch all uploads for an org */
 export async function fetchUploads(orgId: string): Promise<Upload[]> {
   const res = await fetch(
-    `${API_BASE}/api/uploads?orgId=${encodeURIComponent(orgId)}`,
+    `${buildApiUrl('/uploads')}?orgId=${encodeURIComponent(orgId)}`,
   );
 
   if (!res.ok) {
@@ -38,8 +39,10 @@ export async function fetchUploads(orgId: string): Promise<Upload[]> {
 
 /** Delete an upload by ID */
 export async function deleteUpload(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/uploads/${id}`, {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(buildApiUrl(`/uploads/${id}`), {
     method: 'DELETE',
+    headers: authHeaders,
   });
 
   if (!res.ok) {

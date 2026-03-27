@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAppStore } from '@/store/app-store';
+import { buildApiUrl, getAuthHeaders, isUuid } from '@/lib/api';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -15,25 +16,21 @@ export default function OntologyPage() {
   const { data: scores, isLoading } = useQuery({
     queryKey: ['friction', org?.id],
     queryFn: async () => {
-      const res = await fetch(
-        import.meta.env.VITE_API_BASE_URL
-          ? `${import.meta.env.VITE_API_BASE_URL}/friction?orgId=${org?.id}`
-          : `/api/friction?orgId=${org?.id}`
-      );
+      const res = await fetch(`${buildApiUrl('/friction')}?orgId=${org?.id}`);
       if (!res.ok) throw new Error('Failed to fetch logic');
       return res.json();
     },
-    enabled: !!org?.id,
+    enabled: isUuid(org?.id),
   });
 
   const recomputeMutation = useMutation({
     mutationFn: async () => {
-      const url = import.meta.env.VITE_API_BASE_URL
-        ? `${import.meta.env.VITE_API_BASE_URL}/friction/recompute`
-        : `/api/friction/recompute`;
-      const res = await fetch(url, {
+      const res = await fetch(buildApiUrl('/friction/recompute'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(await getAuthHeaders()),
+        },
         body: JSON.stringify({ orgId: org?.id }),
       });
       if (!res.ok) throw new Error('Compute error');
@@ -78,7 +75,7 @@ export default function OntologyPage() {
               variant="outline" 
               size="sm" 
               onClick={() => recomputeMutation.mutate()} 
-              disabled={recomputeMutation.isPending}
+              disabled={recomputeMutation.isPending || !isUuid(org?.id)}
               className="text-xs"
             >
               {recomputeMutation.isPending ? (

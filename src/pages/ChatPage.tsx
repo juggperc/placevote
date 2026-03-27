@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -46,6 +46,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Document, Page, Text, StyleSheet, pdf } from '@react-pdf/renderer';
+import { buildApiUrl, isUuid } from '@/lib/api';
 
 const pdfStyles = StyleSheet.create({
   page: { padding: 40, fontFamily: 'Helvetica', color: '#1E293B' },
@@ -82,7 +83,26 @@ const ReportDocument = ({ content, orgName }: { content: string; orgName: string
 export default function ChatPage() {
   const org = useAppStore((s) => s.organization);
   const user = useAppStore((s) => s.user);
+  const getAuthToken = useAppStore((s) => s.getAuthToken);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function hydrateAuthHeaders() {
+      const token = await getAuthToken?.().catch(() => null);
+      if (isCancelled) return;
+
+      setAuthHeaders(token ? { Authorization: `Bearer ${token}` } : {});
+    }
+
+    void hydrateAuthHeaders();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [getAuthToken, user?.id]);
 
   const {
     messages,
@@ -91,9 +111,8 @@ export default function ChatPage() {
     handleSubmit,
     isLoading,
   } = useChat({
-    api: import.meta.env.VITE_API_BASE_URL
-      ? `${import.meta.env.VITE_API_BASE_URL}/chat`
-      : '/api/chat',
+    api: buildApiUrl('/chat'),
+    headers: authHeaders,
     body: {
       orgId: org?.id,
     },
@@ -124,7 +143,7 @@ export default function ChatPage() {
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (input.trim() || isLoading) {
+      if ((input.trim() || isLoading) && isUuid(org?.id)) {
         handleSubmit(e as any);
       }
     }
@@ -136,9 +155,8 @@ export default function ChatPage() {
     complete: generateReport,
     isLoading: isGeneratingReport,
   } = useCompletion({
-    api: import.meta.env.VITE_API_BASE_URL
-      ? `${import.meta.env.VITE_API_BASE_URL}/report`
-      : '/api/report',
+    api: buildApiUrl('/report'),
+    headers: authHeaders,
   });
 
   const exportPdf = async () => {
@@ -185,7 +203,17 @@ export default function ChatPage() {
 
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="hidden md:flex shadow-sm" onClick={() => generateReport("", { body: { orgId: org?.id, suburbName: 'All', dateRange: 'All Time' }})}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="hidden md:flex shadow-sm"
+              onClick={() =>
+                generateReport('', {
+                  body: { orgId: org?.id, suburbName: 'All', dateRange: 'All Time' },
+                })
+              }
+              disabled={!isUuid(org?.id)}
+            >
               <FileText className="mr-2 h-4 w-4" />
               Export Brief
             </Button>
@@ -550,7 +578,7 @@ export default function ChatPage() {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !input.trim() || !isUuid(org?.id)}
               size="icon"
               className="shrink-0 transition-all mb-1 h-9 w-9 rounded-xl shadow-sm"
               title="Send Message"

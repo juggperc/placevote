@@ -134,8 +134,8 @@ export const processUpload = inngest.createFunction(
     retries: 2,
     triggers: [{ event: 'upload/queued' }],
     onFailure: async ({ event, error }) => {
-      const { failedJobs } = await import('../src/lib/schema');
-      const { db } = await import('./_db');
+      const { failedJobs } = await import('../src/lib/schema.js');
+      const { db } = await import('./_db.js');
       await db.insert(failedJobs).values({
         eventId: event.data.event.id || 'unknown',
         functionId: 'process-upload',

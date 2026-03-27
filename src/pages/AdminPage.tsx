@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
+import { buildApiUrl, getAuthHeaders, isUuid } from '@/lib/api';
 
 export default function AdminPage() {
   const org = useAppStore((s) => s.organization);
@@ -18,10 +19,8 @@ export default function AdminPage() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin-stats', org?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/stats?orgId=${org?.id}`, {
-        headers: {
-          'Authorization': `Bearer ${user?.id}`
-        }
+      const res = await fetch(`${buildApiUrl('/admin/stats')}?orgId=${org?.id}`, {
+        headers: await getAuthHeaders(),
       });
       if (!res.ok) {
         if (res.status === 403) throw new Error('Forbidden: Requires Admin role');
@@ -29,22 +28,20 @@ export default function AdminPage() {
       }
       return res.json();
     },
-    enabled: !!org?.id && user?.role === 'admin',
+    enabled: isUuid(org?.id) && user?.role === 'admin',
     retry: false
   });
 
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['org-settings', org?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/orgs/${org?.id}/settings`, {
-        headers: {
-          'Authorization': `Bearer ${user?.id}`
-        }
+      const res = await fetch(buildApiUrl(`/orgs/${org?.id}/settings`), {
+        headers: await getAuthHeaders(),
       });
       if (!res.ok) throw new Error('Failed to fetch settings');
       return res.json();
     },
-    enabled: !!org?.id && user?.role === 'admin',
+    enabled: isUuid(org?.id) && user?.role === 'admin',
   });
 
   useEffect(() => {
@@ -56,11 +53,11 @@ export default function AdminPage() {
 
   const saveSettings = useMutation({
     mutationFn: async (data: { aiModel?: string; openrouterApiKey?: string }) => {
-      const res = await fetch(`/api/orgs/${org?.id}/settings`, {
+      const res = await fetch(buildApiUrl(`/orgs/${org?.id}/settings`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user?.id}`
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify(data)
       });

@@ -4,6 +4,7 @@ import { Upload, CloudUpload, FileSpreadsheet, FileText, Braces, Globe, Archive,
 import { cn } from '@/lib/utils';
 import { useUploadFile } from '@/hooks/use-uploads';
 import { useAppStore } from '@/store/app-store';
+import { isUuid } from '@/lib/api';
 
 const ACCEPT = {
   'text/csv': ['.csv'],
@@ -28,6 +29,7 @@ export default function UploadDropzone() {
   const org = useAppStore((s) => s.organization);
   const { mutateAsync, isPending } = useUploadFile(org?.id);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const canUpload = isUuid(org?.id);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -50,7 +52,7 @@ export default function UploadDropzone() {
       onDrop,
       accept: ACCEPT,
       multiple: true,
-      disabled: isPending,
+      disabled: isPending || !canUpload,
     });
 
   return (
@@ -61,10 +63,10 @@ export default function UploadDropzone() {
           'group relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-8 transition-all duration-300',
           isDragActive && isDragAccept
             ? 'border-primary bg-primary/5 shadow-lg shadow-primary/5'
-            : isDragReject
+          : isDragReject
               ? 'border-destructive bg-destructive/5'
               : 'border-border hover:border-primary/40 hover:bg-muted/50',
-          isPending && 'pointer-events-none opacity-60',
+          (isPending || !canUpload) && 'pointer-events-none opacity-60',
         )}
       >
         <input {...getInputProps()} />
@@ -99,7 +101,13 @@ export default function UploadDropzone() {
               : 'Drag & drop files here'}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            or <span className="text-primary underline underline-offset-2">browse files</span>
+            {canUpload ? (
+              <>
+                or <span className="text-primary underline underline-offset-2">browse files</span>
+              </>
+            ) : (
+              'Workspace is still initialising…'
+            )}
           </p>
         </div>
 

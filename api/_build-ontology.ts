@@ -43,7 +43,7 @@ export const buildOntology = inngest.createFunction(
     id: 'build-ontology',
     retries: 2, // Minimize retries on expensive LLM calls
     onFailure: async ({ event, error }) => {
-      const { failedJobs } = await import('../src/lib/schema');
+      const { failedJobs } = await import('../src/lib/schema.js');
       await db.insert(failedJobs).values({
         eventId: event.data.event.id || 'unknown',
         functionId: 'build-ontology',
@@ -114,17 +114,17 @@ export const buildOntology = inngest.createFunction(
 
       if (cappedNodes.length > 0) {
         await step.run('upsert-nodes', async () => {
+          const nodeValues: Array<typeof ontologyNodes.$inferInsert> = cappedNodes.map((n) => ({
+            orgId,
+            type: n.type,
+            label: n.label,
+            properties: (n.properties ?? null) as Record<string, unknown> | null,
+          }));
+
           // Batch upsert: match on org_id + type + label, update properties
           await db
             .insert(ontologyNodes)
-            .values(
-              cappedNodes.map((n) => ({
-                orgId,
-                type: n.type,
-                label: n.label,
-                properties: n.properties,
-              })),
-            )
+            .values(nodeValues)
             .onConflictDoUpdate({
               target: [
                 ontologyNodes.orgId,

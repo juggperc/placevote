@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { eq, desc } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from './_db.js';
 import { uploads } from '../src/lib/schema.js';
 
@@ -16,11 +17,11 @@ export default async function handler(
   }
 
   try {
-    const orgId = req.query.orgId as string;
-
-    if (!orgId) {
-      return res.status(400).json({ error: 'Missing orgId query parameter' });
+    const parseResult = z.string().uuid().safeParse(req.query.orgId);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid orgId query parameter' });
     }
+    const orgId = parseResult.data;
 
     const rows = await db
       .select()
