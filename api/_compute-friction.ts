@@ -3,6 +3,11 @@ import { inngest } from './_inngest.js';
 import { db } from './_db.js';
 import { ontologyNodes, ontologyEdges, frictionScores } from '../src/lib/schema.js';
 
+type PersistedFrictionScore = Pick<
+  typeof frictionScores.$inferInsert,
+  'orgId' | 'suburbName' | 'sa2Code' | 'score' | 'signalCount' | 'topIssues'
+>;
+
 export const computeFriction = inngest.createFunction(
   {
     id: 'compute-friction',
@@ -119,7 +124,7 @@ export const computeFriction = inngest.createFunction(
       }
 
       // Normalise 0-100 & extract top issues
-      const finalScores: Array<typeof frictionScores.$inferInsert> = rawScores.map((raw) => {
+      const finalScores: PersistedFrictionScore[] = rawScores.map((raw) => {
         const normalisedScore = maxRawScore > 0 ? (raw.score / maxRawScore) * 100 : 0;
         
         // Count issue frequencies
@@ -153,7 +158,16 @@ export const computeFriction = inngest.createFunction(
       await db.delete(frictionScores).where(eq(frictionScores.orgId, orgId));
       
       if (scores.length > 0) {
-        await db.insert(frictionScores).values(scores as Array<typeof frictionScores.$inferInsert>);
+        const scoreValues: Array<typeof frictionScores.$inferInsert> = scores.map((score) => ({
+          orgId: score.orgId,
+          suburbName: score.suburbName,
+          sa2Code: score.sa2Code,
+          score: score.score,
+          signalCount: score.signalCount,
+          topIssues: score.topIssues,
+        }));
+
+        await db.insert(frictionScores).values(scoreValues);
       }
     });
 
