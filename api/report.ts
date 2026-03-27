@@ -1,8 +1,8 @@
 import { eq, and } from 'drizzle-orm';
 import { streamText } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { db } from './_db';
-import { orgs, frictionScores } from '../src/lib/schema';
+import { db } from './_db.js';
+import { orgs, frictionScores } from '../src/lib/schema.js';
 
 // Required for Vercel AI SDK Web/Edge streaming
 export const config = {

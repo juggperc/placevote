@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { put } from '@vercel/blob';
-import { db } from './_db';
-import { uploads } from '../src/lib/schema';
-import { inngest } from './_inngest';
+import { db } from './_db.js';
+import { uploads } from '../src/lib/schema.js';
+import { inngest } from './_inngest.js';
 
 import { z } from 'zod';
-import { assertOrgAccess } from './_middleware';
-import { uploadRatelimit } from './_ratelimit';
+import { assertOrgAccess } from './_middleware.js';
+import { uploadRatelimit } from './_ratelimit.js';
 
 /** Map file extension → detected_type label */
 function detectFileType(filename: string): string | null {

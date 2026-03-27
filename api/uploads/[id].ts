@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { del } from '@vercel/blob';
 import { eq } from 'drizzle-orm';
-import { db } from '../_db';
-import { uploads } from '../../src/lib/schema';
+import { db } from '../_db.js';
+import { uploads } from '../../src/lib/schema.js';
 
 export default async function handler(
   req: VercelRequest,

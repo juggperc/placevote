@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { db } from '../_db';
-import { uploads, ontologyNodes, frictionScores } from '../../src/lib/schema';
+import { db } from '../_db.js';
+import { uploads, ontologyNodes, frictionScores } from '../../src/lib/schema.js';
 import { eq, sql } from 'drizzle-orm';
-import { assertOrgAccess } from '../_middleware';
+import { assertOrgAccess } from '../_middleware.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {

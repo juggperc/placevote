@@ -2,9 +2,9 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { inngest } from './_inngest';
-import { db } from './_db';
-import { uploads } from '../src/lib/schema';
+import { inngest } from './_inngest.js';
+import { db } from './_db.js';
+import { uploads } from '../src/lib/schema.js';
 
 const MAX_SAMPLE_CHARS = 8_000; // ≈ 2 000 tokens
 

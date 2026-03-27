@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
-import { inngest } from './_inngest';
-import { db } from './_db';
-import { ontologyNodes, ontologyEdges, frictionScores } from '../src/lib/schema';
+import { inngest } from './_inngest.js';
+import { db } from './_db.js';
+import { ontologyNodes, ontologyEdges, frictionScores } from '../src/lib/schema.js';
 
 export const computeFriction = inngest.createFunction(
   {

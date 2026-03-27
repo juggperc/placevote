@@ -2,9 +2,9 @@ import { eq, inArray, sql, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { inngest } from './_inngest';
-import { db } from './_db';
-import { uploads, ontologyNodes, ontologyEdges } from '../src/lib/schema';
+import { inngest } from './_inngest.js';
+import { db } from './_db.js';
+import { uploads, ontologyNodes, ontologyEdges } from '../src/lib/schema.js';
 
 // ─── Ontology Generation Zod schema ─────────────────────────────
 const ontologySchema = z.object({

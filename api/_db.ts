@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from '../src/lib/schema';
+import * as schema from '../src/lib/schema.js';
 
 /**
  * Shared Neon/Drizzle connection for Vercel serverless functions.

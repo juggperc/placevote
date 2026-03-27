@@ -1,12 +1,12 @@
 import { eq, desc } from 'drizzle-orm';
 import { streamText, convertToCoreMessages } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { db } from './_db';
-import { orgs, ontologyNodes, frictionScores } from '../src/lib/schema';
+import { db } from './_db.js';
+import { orgs, ontologyNodes, frictionScores } from '../src/lib/schema.js';
 
 import { z } from 'zod';
-import { assertOrgAccess } from './_middleware';
-import { chatRatelimit } from './_ratelimit';
+import { assertOrgAccess } from './_middleware.js';
+import { chatRatelimit } from './_ratelimit.js';
 
 // Required for Vercel AI SDK Web/Edge streaming
 export const config = {

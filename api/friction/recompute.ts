@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { inngest } from '../_inngest';
+import { inngest } from '../_inngest.js';
 
 export default async function handler(
   req: VercelRequest,
