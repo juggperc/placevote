@@ -2,10 +2,10 @@ import {
   ClerkProvider,
   SignedIn,
   SignedOut,
-  RedirectToSignIn,
 } from '@clerk/clerk-react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import RootLayout from '@/components/RootLayout';
+import LandingPage from '@/pages/LandingPage';
 import ChatPage from '@/pages/ChatPage';
 import OntologyPage from '@/pages/OntologyPage';
 import MapPage from '@/pages/MapPage';
@@ -16,11 +16,6 @@ import { Toaster } from '@/components/ui/sonner';
 
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-/**
- * Wrapper that guards a route — renders children if signed in,
- * otherwise redirects to the Clerk sign-in flow.
- * In dev without Clerk configured, it passes through unprotected.
- */
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!CLERK_PUBLISHABLE_KEY) {
     return <>{children}</>;
@@ -29,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     <>
       <SignedIn>{children}</SignedIn>
       <SignedOut>
-        <RedirectToSignIn />
+        <LandingPage />
       </SignedOut>
     </>
   );
@@ -60,17 +55,11 @@ function GlobalErrorFallback({ error, resetErrorBoundary }: any) {
   );
 }
 
-/**
- * Core route tree — used both with and without Clerk wrapping.
- */
 function AppRouteTree() {
   return (
     <Routes>
-      {/* Public auth routes */}
       <Route path="/sign-in/*" element={<SignInPage />} />
       <Route path="/sign-up/*" element={<SignUpPage />} />
-
-      {/* Protected app routes */}
       <Route
         element={
           <ProtectedRoute>
@@ -99,17 +88,11 @@ function AppRouteTree() {
           </ErrorBoundary>
         } />
       </Route>
-
-      {/* Catch-all → default to chat */}
       <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>
   );
 }
 
-/**
- * When Clerk is configured, wrap in ClerkProvider.
- * Without a key (local dev), render routes unprotected.
- */
 function AppRoutes() {
   const navigate = useNavigate();
 
@@ -125,7 +108,7 @@ function AppRoutes() {
       publishableKey={CLERK_PUBLISHABLE_KEY}
       routerPush={(to) => navigate(to)}
       routerReplace={(to) => navigate(to, { replace: true })}
-      afterSignOutUrl="/sign-in"
+      afterSignOutUrl="/"
     >
       <AppRouteTree />
     </ClerkProvider>
