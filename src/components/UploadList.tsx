@@ -137,6 +137,10 @@ export default function UploadList() {
   const org = useAppStore((s) => s.organization);
   const { data: uploads, isLoading, isError } = useUploads(org?.id);
   const deleteMutation = useDeleteUpload(org?.id);
+  const isPolling =
+    uploads?.some((upload) =>
+      ['queued', 'processing', 'classified'].includes(upload.status),
+    ) ?? false;
 
   if (isLoading) {
     return (
@@ -173,9 +177,11 @@ export default function UploadList() {
         <h3 className="text-sm font-medium text-muted-foreground">
           Uploads ({uploads.length})
         </h3>
-        <span className="text-[10px] text-muted-foreground/60">
-          Polling every 3s
-        </span>
+        {isPolling && (
+          <span className="text-[10px] text-muted-foreground/60">
+            Polling every 3s
+          </span>
+        )}
       </div>
 
       <div className="space-y-1.5">

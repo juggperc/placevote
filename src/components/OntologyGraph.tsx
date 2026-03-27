@@ -29,6 +29,7 @@ import {
 
 import { useAppStore } from '@/store/app-store';
 import { useOntologyData, useClearOntology } from '@/hooks/use-ontology';
+import { useUploads } from '@/hooks/use-uploads';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -147,7 +148,12 @@ const getLayoutedElements = (
 
 export default function OntologyGraph() {
   const org = useAppStore((s) => s.organization);
-  const { data, isLoading } = useOntologyData(org?.id);
+  const { data: uploads } = useUploads(org?.id);
+  const shouldPollOntology =
+    uploads?.some((upload) =>
+      ['queued', 'processing', 'classified'].includes(upload.status),
+    ) ?? false;
+  const { data, isLoading } = useOntologyData(org?.id, shouldPollOntology);
   const rawData = data as import('@/hooks/use-ontology').OntologyGraphData | undefined;
   const clearMutation = useClearOntology(org?.id);
 

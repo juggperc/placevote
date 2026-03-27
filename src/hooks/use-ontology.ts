@@ -28,12 +28,15 @@ async function fetchOntology(orgId?: string): Promise<OntologyGraphData> {
   return res.json();
 }
 
-export function useOntologyData(orgId?: string) {
+export function useOntologyData(orgId?: string, shouldPoll = false) {
   return useQuery<OntologyGraphData>({
     queryKey: ['ontology', orgId],
     queryFn: () => fetchOntology(orgId),
     enabled: isUuid(orgId),
-    refetchInterval: (query) => (query.state.status === 'error' ? false : 5_000),
+    refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
+      return shouldPoll ? 3_000 : false;
+    },
   });
 }
 
