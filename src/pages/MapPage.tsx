@@ -125,7 +125,7 @@ export default function MapPage() {
               <MapIcon className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h1 className="text-base font-semibold tracking-tight">Victoria Geospatial Intel</h1>
+              <h1 className="text-base font-semibold tracking-tight">Geospatial Intelligence</h1>
               <p className="text-xs text-muted-foreground">
                 Heatmap of community friction scores.
               </p>
@@ -145,7 +145,7 @@ export default function MapPage() {
           )}
           
           <MapContainer
-            center={[-37.8136, 144.9631]} // Melbourne Center
+            center={[-37.8136, 144.9631]}
             zoom={12}
             zoomControl={false}
             className="w-full h-[calc(100vh-64px)] z-0"

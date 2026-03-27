@@ -17,18 +17,18 @@ interface AppStore {
   logout: () => void;
 }
 
-// Stub user and org for development
+// Stub user and org for development (when Clerk is not configured)
 const STUB_USER: User = {
-  id: 'usr_001',
-  email: 'alex@placevote.io',
-  displayName: 'Alex McIntyre',
+  id: 'usr_stub',
+  email: 'demo@placevote.io',
+  displayName: 'Demo User',
   role: 'admin',
 };
 
 const STUB_ORG: Organization = {
-  id: 'org_001',
-  name: 'City of Melbourne',
-  slug: 'city-of-melbourne',
+  id: 'org_stub',
+  name: 'Demo Council',
+  slug: 'demo-council',
 };
 
 export const useAppStore = create<AppStore>((set) => ({
