@@ -11,6 +11,7 @@ export default function AdminPage() {
   const org = useAppStore((s) => s.organization);
   const user = useAppStore((s) => s.user);
   const queryClient = useQueryClient();
+  const orgSettingsUrl = `${buildApiUrl('/org-settings')}?orgId=${org?.id}`;
 
   const [aiModel, setAiModel] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -35,7 +36,7 @@ export default function AdminPage() {
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ['org-settings', org?.id],
     queryFn: async () => {
-      const res = await fetch(buildApiUrl(`/orgs/${org?.id}/settings`), {
+      const res = await fetch(orgSettingsUrl, {
         headers: await getAuthHeaders(),
       });
       if (!res.ok) throw new Error('Failed to fetch settings');
@@ -53,7 +54,7 @@ export default function AdminPage() {
 
   const saveSettings = useMutation({
     mutationFn: async (data: { aiModel?: string; openrouterApiKey?: string }) => {
-      const res = await fetch(buildApiUrl(`/orgs/${org?.id}/settings`), {
+      const res = await fetch(orgSettingsUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

@@ -5,6 +5,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { inngest } from './_inngest.js';
 import { db } from './_db.js';
 import { uploads, ontologyNodes, ontologyEdges, orgs } from '../src/lib/schema.js';
+import { buildFallbackOntology } from './_ontology-fallback.js';
 
 const DEFAULT_MODEL = 'x-ai/grok-4.1-fast';
 
@@ -72,40 +73,55 @@ export const buildOntology = inngest.createFunction(
         return org ?? { aiModel: null, openrouterApiKey: null };
       });
 
-      const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY!;
+      const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY || null;
       const modelName = orgSettings.aiModel || DEFAULT_MODEL;
 
       // ── Step 1: Call OpenRouter → Extract Ontology ──────────
       const ontology = await step.run('extract-ontology', async () => {
-        const openrouter = createOpenRouter({
-          apiKey,
+        const fallback = buildFallbackOntology({
+          filename,
+          sample,
         });
 
-        const { object } = await generateObject<z.infer<typeof ontologySchema>>({
-          model: openrouter.chat(modelName) as any,
-          schema: ontologySchema,
-          prompt: [
-            'You are a civic data knowledge extraction AI.',
-            'Extract an ontology graph from the following dataset sample.',
-            '',
-            'Placevote Ontology Node Types:',
-            '- Place (suburb, street, precinct)',
-            '- Project (council project or proposal)',
-            '- Submission (community opinion/feedback)',
-            '- Budget (line item or allocation)',
-            '- Signal (complaint, DA objection, service request)',
-            '',
-            `Filename: ${filename}`,
-            'Data sample:',
-            sample,
-            '',
-            'Return a structured JSON with `nodes` and `edges`.',
-            'Ensure `source_label` and `target_label` on edges strictly match a node `label`.',
-            'Limit to the most important entities and relationships.',
-          ].join('\n'),
-        });
+        if (!apiKey) {
+          console.warn('OPENROUTER_API_KEY missing, using fallback ontology extraction for', filename);
+          return fallback;
+        }
 
-        return object;
+        try {
+          const openrouter = createOpenRouter({
+            apiKey,
+          });
+
+          const { object } = await generateObject<z.infer<typeof ontologySchema>>({
+            model: openrouter.chat(modelName) as any,
+            schema: ontologySchema,
+            prompt: [
+              'You are a civic data knowledge extraction AI.',
+              'Extract an ontology graph from the following dataset sample.',
+              '',
+              'Placevote Ontology Node Types:',
+              '- Place (suburb, street, precinct)',
+              '- Project (council project or proposal)',
+              '- Submission (community opinion/feedback)',
+              '- Budget (line item or allocation)',
+              '- Signal (complaint, DA objection, service request)',
+              '',
+              `Filename: ${filename}`,
+              'Data sample:',
+              sample,
+              '',
+              'Return a structured JSON with `nodes` and `edges`.',
+              'Ensure `source_label` and `target_label` on edges strictly match a node `label`.',
+              'Limit to the most important entities and relationships.',
+            ].join('\n'),
+          });
+
+          return object;
+        } catch (error) {
+          console.warn('AI ontology extraction failed, using fallback ontology:', error);
+          return fallback;
+        }
       });
 
       // ── Step 2: Upsert Nodes (Capped at 200) ─────────────────
@@ -145,7 +161,7 @@ export const buildOntology = inngest.createFunction(
         await step.run('insert-edges', async () => {
           // Fetch the actual UUIDs of all nodes for this org that we just upserted
           // (We fetch all the relevant labels to map source/target)
-          const nodeLabels = cappedNodes.map((n) => n.label);
+          const nodeLabels = Array.from(new Set(cappedNodes.map((n) => n.label)));
           const existingNodes = await db
             .select({ id: ontologyNodes.id, label: ontologyNodes.label })
             .from(ontologyNodes)
@@ -183,10 +199,19 @@ export const buildOntology = inngest.createFunction(
             weight: number;
           }[];
 
-          if (mappedEdges.length > 0) {
+          const uniqueEdges = Array.from(
+            new Map(
+              mappedEdges.map((edge) => [
+                `${edge.sourceId}:${edge.targetId}:${edge.label}`,
+                edge,
+              ]),
+            ).values(),
+          );
+
+          if (uniqueEdges.length > 0) {
             // Due to limitations of parameter binding length, 
             // chunking could be needed if the array is huge, but it's capped at 500 edges, so we safely insert.
-            await db.insert(ontologyEdges).values(mappedEdges);
+            await db.insert(ontologyEdges).values(uniqueEdges);
           }
         });
       }

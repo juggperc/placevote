@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { put } from '@vercel/blob';
+import { eq } from 'drizzle-orm';
 import { db } from './_db.js';
 import { uploads } from '../src/lib/schema.js';
 import { inngest } from './_inngest.js';
@@ -108,6 +109,7 @@ export default async function handler(
         blobUrl,
         status: 'queued',
         detectedType,
+        rowCount: preview.rowCount,
       })
       .returning();
 
@@ -125,9 +127,13 @@ export default async function handler(
           sample: preview.sample,
         },
       });
-    } catch {
-      // Don't block the upload if Inngest isn't configured yet
-      console.warn('Inngest event emission failed (is INNGEST_EVENT_KEY set?)');
+    } catch (error) {
+      console.warn('Inngest event emission failed; marking upload as error:', error);
+      await db
+        .update(uploads)
+        .set({ status: 'error' })
+        .where(eq(uploads.id, upload.id));
+      upload.status = 'error';
     }
 
     return res.status(201).json(upload);

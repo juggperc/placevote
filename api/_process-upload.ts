@@ -6,6 +6,7 @@ import { inngest } from './_inngest.js';
 import { db } from './_db.js';
 import { uploads, orgs } from '../src/lib/schema.js';
 import { parseUploadBuffer } from './_upload-preview.js';
+import { buildFallbackClassification } from './_ontology-fallback.js';
 
 const DEFAULT_MODEL = 'x-ai/grok-4.1-fast';
 
@@ -43,20 +44,38 @@ export const processUpload = inngest.createFunction(
     onFailure: async ({ event, error }) => {
       const { failedJobs } = await import('../src/lib/schema.js');
       const { db } = await import('./_db.js');
+      const { uploads } = await import('../src/lib/schema.js');
+      const { eq } = await import('drizzle-orm');
       await db.insert(failedJobs).values({
         eventId: event.data.event.id || 'unknown',
         functionId: 'process-upload',
         payload: event.data.event.data,
         error: error.message,
       });
+      const uploadId = event.data.event.data?.uploadId;
+      if (typeof uploadId === 'string') {
+        await db
+          .update(uploads)
+          .set({ status: 'error' })
+          .where(eq(uploads.id, uploadId));
+      }
     },
   },
   async ({ event, step }) => {
-    const { uploadId, orgId, filename, blobUrl, rowCount: initialRowCount, sample: initialSample } = event.data as {
+    const {
+      uploadId,
+      orgId,
+      filename,
+      blobUrl,
+      detectedType,
+      rowCount: initialRowCount,
+      sample: initialSample,
+    } = event.data as {
       uploadId: string;
       orgId: string;
       filename: string;
       blobUrl: string;
+      detectedType?: string | null;
       rowCount?: number;
       sample?: string;
     };
@@ -71,7 +90,7 @@ export const processUpload = inngest.createFunction(
       return org ?? { aiModel: null, openrouterApiKey: null };
     });
 
-    const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY!;
+    const apiKey = orgSettings.openrouterApiKey || process.env.OPENROUTER_API_KEY || null;
     const modelName = orgSettings.aiModel || DEFAULT_MODEL;
 
     // ── Step 1: Mark as processing ──────────────────────────
@@ -103,29 +122,46 @@ export const processUpload = inngest.createFunction(
 
     // ── Step 4: Classify with OpenRouter → Gemini 2.0 Flash ─
     const classification = await step.run('classify-ai', async () => {
-      const openrouter = createOpenRouter({
-        apiKey,
+      const fallback = buildFallbackClassification({
+        filename,
+        rowCount: parsed.rowCount,
+        sample: parsed.sample,
       });
 
-      const { object } = await generateObject<z.infer<typeof classificationSchema>>({
-        model: openrouter.chat(modelName) as any,
-        schema: classificationSchema,
-        prompt: [
-          'You are a civic data analyst working for an Australian local government.',
-          'Classify the following dataset sample.',
-          '',
-          `Filename: ${filename}`,
-          `Row / line count: ${parsed.rowCount}`,
-          '',
-          'Data sample:',
-          parsed.sample,
-          '',
-          'Return the data type, potential civic uses, any privacy/data-quality risks,',
-          'and a brief human-readable summary.',
-        ].join('\n'),
-      });
+      if (!apiKey) {
+        console.warn('OPENROUTER_API_KEY missing, using fallback classification for', filename);
+        return fallback;
+      }
 
-      return object;
+      try {
+        const openrouter = createOpenRouter({
+          apiKey,
+        });
+
+        const { object } = await generateObject<z.infer<typeof classificationSchema>>({
+          model: openrouter.chat(modelName) as any,
+          schema: classificationSchema,
+          prompt: [
+            'You are a civic data analyst working for an Australian local government.',
+            'Classify the following dataset sample.',
+            '',
+            `Filename: ${filename}`,
+            `Detected file type: ${detectedType ?? 'unknown'}`,
+            `Row / line count: ${parsed.rowCount}`,
+            '',
+            'Data sample:',
+            parsed.sample,
+            '',
+            'Return the data type, potential civic uses, any privacy/data-quality risks,',
+            'and a brief human-readable summary.',
+          ].join('\n'),
+        });
+
+        return object;
+      } catch (error) {
+        console.warn('AI classification failed, using fallback classification:', error);
+        return fallback;
+      }
     });
 
     // ── Step 5: Update DB — status → classified ─────────────
