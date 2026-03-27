@@ -3,6 +3,10 @@ import { eq, desc } from 'drizzle-orm';
 import { db } from './_db.js';
 import { frictionScores } from '../src/lib/schema.js';
 
+export const config = {
+  runtime: 'nodejs',
+};
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
